@@ -320,31 +320,46 @@ void Lexer::Stringify(SmallVectorImpl<char> &Str) { StringifyImpl(Str, '"'); }
 // Token Spelling
 //===----------------------------------------------------------------------===//
 
+static void writeData(char *To, const char *From, size_t N, size_t L) {
+  memcpy(To + L, From, N);
+}
+
+static void writeData(raw_ostream &OS, const char *From, size_t N, size_t L) {
+  OS.write(From, N);
+}
+
 /// Slow case of getSpelling. Extract the characters comprising the
 /// spelling of this token from the provided input buffer.
+template <typename T>
 static size_t getSpellingSlow(const Token &Tok, const char *BufPtr,
-                              const LangOptions &LangOpts, char *Spelling) {
+                              const LangOptions &LangOpts, T &&Spelling) {
+  static_assert(std::is_same_v<T, char *> ||
+                std::is_same_v<T, raw_ostream &>);
   assert(Tok.needsCleaning() && "getSpellingSlow called on simple token");
 
   size_t Length = 0;
   const char *BufEnd = BufPtr + Tok.getLength();
 
   if (tok::isStringLiteral(Tok.getKind())) {
+    char Last = 0;
+    char SecondLast = 0;
+
     // Munch the encoding-prefix and opening double-quote.
     while (BufPtr < BufEnd) {
       auto CharAndSize = Lexer::getCharAndSizeNoWarn(BufPtr, LangOpts);
-      Spelling[Length++] = CharAndSize.Char;
+      SecondLast = Last;
+      Last = CharAndSize.Char;
+      writeData(Spelling, &Last, 1, Length++);
       BufPtr += CharAndSize.Size;
 
-      if (Spelling[Length - 1] == '"')
+      if (Last == '"')
         break;
     }
 
     // Raw string literals need special handling; trigraph expansion and line
     // splicing do not occur within their d-char-sequence nor within their
     // r-char-sequence.
-    if (Length >= 2 &&
-        Spelling[Length - 2] == 'R' && Spelling[Length - 1] == '"') {
+    if (Length >= 2 && SecondLast == 'R' && Last == '"') {
       // Search backwards from the end of the token to find the matching closing
       // quote.
       const char *RawEnd = BufEnd;
@@ -352,7 +367,7 @@ static size_t getSpellingSlow(const Token &Tok, const char *BufPtr,
       size_t RawLength = RawEnd - BufPtr + 1;
 
       // Everything between the quotes is included verbatim in the spelling.
-      memcpy(Spelling + Length, BufPtr, RawLength);
+      writeData(Spelling, BufPtr, RawLength, Length);
       Length += RawLength;
       BufPtr += RawLength;
 
@@ -362,7 +377,7 @@ static size_t getSpellingSlow(const Token &Tok, const char *BufPtr,
 
   while (BufPtr < BufEnd) {
     auto CharAndSize = Lexer::getCharAndSizeNoWarn(BufPtr, LangOpts);
-    Spelling[Length++] = CharAndSize.Char;
+    writeData(Spelling, &CharAndSize.Char, 1, Length++);
     BufPtr += CharAndSize.Size;
   }
 
@@ -410,6 +425,31 @@ StringRef Lexer::getSpelling(SourceLocation loc,
   buffer.resize(length);
   buffer.resize(getSpellingSlow(token, tokenBegin, options, buffer.data()));
   return StringRef(buffer.data(), buffer.size());
+}
+
+/// dumpSpelling - This method copy the spelling of a token into an ostream
+/// instead. The length of the actual written is returned.
+unsigned Lexer::dumpSpelling(const Token &Tok, raw_ostream &OS,
+                             const SourceManager &SM,
+                             const LangOptions &LangOpts, bool *Invalid) {
+  assert((int)Tok.getLength() >= 0 && "Token character range is bogus!");
+
+  bool CharDataInvalid = false;
+  const char *TokStart = SM.getCharacterData(Tok.getLocation(),
+                                             &CharDataInvalid);
+  if (Invalid)
+    *Invalid = CharDataInvalid;
+  if (CharDataInvalid)
+    return 0;
+
+  // If this token contains nothing interesting, write it directly.
+  if (!Tok.needsCleaning()) {
+    unsigned TokLength = Tok.getLength();
+    OS.write(TokStart, TokLength);
+    return TokLength;
+  }
+
+  return getSpellingSlow(Tok, TokStart, LangOpts, OS);
 }
 
 /// getSpelling() - Return the 'spelling' of this token.  The spelling of a

@@ -340,6 +340,13 @@ public:
                               const LangOptions &LangOpts,
                               bool *Invalid = nullptr);
 
+  /// dumpSpelling - This method copy the spelling of a token into an ostream
+  /// instead. The length of the actual written is returned.
+  static unsigned dumpSpelling(const Token &Tok, raw_ostream &OS,
+                               const SourceManager &SM,
+                               const LangOptions &LangOpts,
+                               bool *invalid = nullptr);
+
   /// getSpelling() - Return the 'spelling' of the Tok token.  The spelling of a
   /// token is the characters used to represent the token in the source file
   /// after trigraph expansion and escaped-newline folding.  In particular, this
