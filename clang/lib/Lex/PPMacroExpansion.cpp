@@ -491,6 +491,8 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
       Callbacks->MacroExpands(Identifier, M, Identifier.getLocation(),
                               /*Args=*/nullptr);
     ExpandBuiltinMacro(Identifier);
+    if (Callbacks)
+      Callbacks->MacroExpanded(MI, false);
     return true;
   }
 
@@ -579,6 +581,8 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
     Identifier.setFlag(Token::LeadingEmptyMacro);
     PropagateLineStartLeadingSpaceInfo(Identifier);
     ++NumFastMacroExpanded;
+    if (Callbacks)
+      Callbacks->MacroExpanded(MI, true);
     return false;
   } else if (MI->getNumTokens() == 1 &&
              isTrivialSingleTokenExpansion(MI, Identifier.getIdentifierInfo(),
@@ -625,6 +629,8 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
     // Since this is not an identifier token, it can't be macro expanded, so
     // we're done.
     ++NumFastMacroExpanded;
+    if (Callbacks)
+      Callbacks->MacroExpanded(MI, true);
     return true;
   }
 

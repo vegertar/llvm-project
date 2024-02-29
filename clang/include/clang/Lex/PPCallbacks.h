@@ -24,6 +24,7 @@
 namespace clang {
 class Token;
 class IdentifierInfo;
+class MacroInfo;
 class MacroDefinition;
 class MacroDirective;
 class MacroArgs;
@@ -310,6 +311,9 @@ public:
   virtual void MacroExpands(const Token &MacroNameTok,
                             const MacroDefinition &MD, SourceRange Range,
                             const MacroArgs *Args) {}
+
+  /// Hook called whenever a macro is expanded.
+  virtual void MacroExpanded(const MacroInfo *MI, bool Fast) {}
 
   /// Hook called whenever a macro definition is seen.
   virtual void MacroDefined(const Token &MacroNameTok,
@@ -615,6 +619,11 @@ public:
                     SourceRange Range, const MacroArgs *Args) override {
     First->MacroExpands(MacroNameTok, MD, Range, Args);
     Second->MacroExpands(MacroNameTok, MD, Range, Args);
+  }
+
+  void MacroExpanded(const MacroInfo *MI, bool Fast) override {
+    First->MacroExpanded(MI, Fast);
+    Second->MacroExpanded(MI, Fast);
   }
 
   void MacroDefined(const Token &MacroNameTok,
